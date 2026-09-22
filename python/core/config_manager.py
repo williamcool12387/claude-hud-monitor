@@ -9,11 +9,16 @@ from core.logger import logger
 DEFAULT_CONFIG = {
     "window_x": None,
     "window_y": None,
-    "layout_mode": "vertical",  # "vertical" or "horizontal"
+    "ui_mode": "cards",  # "cards" (Classic Cards) or "table" (Modern Table)
+    "layout_mode": "vertical",  # "vertical" or "horizontal" (for cards mode)
     "vertical_width": 280,
     "vertical_height": 410,
     "horizontal_width": 690,
     "horizontal_height": 145,
+    "table_width": 450,
+    "table_height": 350,
+    "color_scheme": "scale",  # "scale" or "duo" (for table mode)
+    "appearance": "auto",     # "auto", "light" or "dark" (for table mode)
     "always_on_top": True,
     "opacity": 0.88,
     "click_through": False,
@@ -21,7 +26,8 @@ DEFAULT_CONFIG = {
     "hotkey_enabled": True,
     "hotkey": "Alt+C",
     "locked": False,
-    "autostart": False
+    "autostart": False,
+    "claude_profile": "auto"
 }
 
 def get_user_config_dir() -> str:

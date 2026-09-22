@@ -28,11 +28,16 @@ def run():
             if ConfigManager(path).get('opacity') != 0.55:
                 raise RuntimeError('Settings did not survive reload')
             hud = HUDWindow(config, providers={})
-            hud.cards['agy'].update_metrics(UsageMetrics(error='test'))
-            hud.cards['agy'].update_metrics(UsageMetrics(metric1_val=20, metric1_text='20%'))
+            hud._on_data_fetched(UsageMetrics(provider_id='agy', error='test'))
+            hud._on_data_fetched(UsageMetrics(provider_id='agy', metric1_val=20, metric1_text='20%'))
             if 'test' in hud.cards['agy'].m1_sub.text():
-                raise RuntimeError('Error survived recovery')
+                raise RuntimeError('Cards error survived recovery')
+            if hud.table.columns['agy'].badge.text() == 'OFFLINE':
+                raise RuntimeError('Table error survived recovery')
             hud.toggle_layout_mode()
+            hud.toggle_ui_mode()
+            hud.set_color_scheme('duo')
+            hud.set_appearance('dark')
             app.processEvents()
             hud.refresh_controller.stop()
             hud.countdown_timer.stop()
