@@ -938,7 +938,10 @@ impl HUDWindow {
                 persist_rect(&debouncer_events, geom_now.get());
             }
             EventKind::Hide => {
-                hud_state_events.stop_snap_animation();
+                with_hud_later(|hud| {
+                    hud.cancel_snap_animation(true);
+                    hud.hide_dock_preview();
+                });
                 schedule_trim(&trim_events, HIDE_TRIM_DELAY_MS)
             }
             // Python `mouseDoubleClickEvent` (left): refresh now
@@ -1542,9 +1545,22 @@ impl HUDWindow {
     }
 
     pub fn set_claude_profile(&mut self, profile_id: &str) {
+        let (resolved, _) = crate::providers::claude::resolve_active_profile(profile_id);
+        let main_key = accounts::profile_key(&resolved.id);
         crate::config::ConfigManager::update_and_save(&self.config, |cfg| {
             cfg.claude_profile = profile_id.to_string();
+            if !main_key.is_empty() && !main_key.eq_ignore_ascii_case("auto") {
+                let clashing: Vec<String> = accounts::accounts_of(cfg)
+                    .into_iter()
+                    .filter(|a| accounts::profile_key(&a.profile) == main_key)
+                    .map(|a| a.id)
+                    .collect();
+                for id in clashing {
+                    accounts::remove_account(cfg, &id);
+                }
+            }
         });
+        self.request_apply_accounts();
         self.trigger_refresh();
     }
 
@@ -1628,6 +1644,7 @@ impl HUDWindow {
             self.providers.remove(id);
             self.raw_metrics.remove(id);
             self.accounts.remove(id);
+            self.sidebar_cards.remove(id);
         }
 
         let tile_specs: Vec<TileSpec> = tiles
@@ -2105,8 +2122,8 @@ impl QObject for HudFilter {
             }
         }
         // the user takes the bar over: a running glide stops and the window stays where it is
-        if matches!(event.kind, EventKind::MouseButtonPress { .. }) {
-            hud.stop_snap_animation();
+        if matches!(event.kind, EventKind::MouseButtonPress { .. }) && hud.stop_snap_animation() {
+            hud.snap_timer.start();
         }
         if hud.resize.borrow().is_some() {
             let buttons_up = ferrokit_widgets::application::Application::mouse_buttons().is_empty();

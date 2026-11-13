@@ -410,7 +410,10 @@ impl CardCore {
             cells.push((m2_title, self.m2_cell.clone()));
         }
         for row in self.extra_rows.borrow().iter().take(self.extra_count.get()) {
-            cells.push((label_text(&row.title), row.cell.clone()));
+            let t = label_text(&row.title);
+            if !t.is_empty() {
+                cells.push((t, row.cell.clone()));
+            }
         }
         cells
             .into_iter()
@@ -452,6 +455,9 @@ impl CardCore {
     /// Python `eventFilter` `MouseButtonPress` with the left button.
     fn press(&self, x: i32, y: i32) -> bool {
         let rows = self.drag_rows();
+        if rows.len() <= 1 {
+            return false;
+        }
         for (index, row) in rows.iter().enumerate() {
             if y >= row.top && y <= row.bottom && x >= row.left && x < row.right {
                 *self.drag.borrow_mut() = Some(RowDrag {
