@@ -11,6 +11,9 @@ from core.providers.base import MetricRow, UsageMetrics
 AGY_ROW_TITLES = ("GEMINI 5H", "GEMINI 7D", "C/G 5H", "C/G 7D", "ARGON 7D")
 DEFAULT_PRIMARY = ("C/G 5H", "ARGON 7D")
 DEFAULT_ORDER = DEFAULT_PRIMARY + tuple(t for t in AGY_ROW_TITLES if t not in DEFAULT_PRIMARY)
+# Fixed rows that are only worth showing while the data carries a value for them. Since agy CLI 1.5.16 Argon is no
+# longer its own quota group (it counts inside "Gemini Models"), so its row stays hidden until data for it appears.
+HIDDEN_WITHOUT_DATA = ("ARGON 7D",)
 
 
 def normalize_primary(value) -> tuple:
@@ -95,6 +98,17 @@ def dynamic_titles(metrics: Optional[UsageMetrics]) -> tuple:
     return tuple(title for title in rows if title not in AGY_ROW_TITLES)
 
 
+def hidden_titles(metrics: Optional[UsageMetrics]) -> tuple:
+    """Fixed rows to leave out of the display: those in HIDDEN_WITHOUT_DATA that carry no value. Empty unless the
+    data is complete, like `dynamic_titles`."""
+    if metrics is None:
+        return ()
+    rows = _row_map(metrics)
+    if not all(title in rows for title in AGY_ROW_TITLES):
+        return ()
+    return tuple(title for title in HIDDEN_WITHOUT_DATA if rows[title].val is None)
+
+
 def arrange_agy(metrics: UsageMetrics, primary) -> UsageMetrics:
     """Return a copy whose metric1/metric2 are the chosen rows and whose extras are all the other rows
     (the fixed ones and any dynamic ones). Unchanged when the data does not carry all five fixed rows
@@ -102,7 +116,8 @@ def arrange_agy(metrics: UsageMetrics, primary) -> UsageMetrics:
     rows = _row_map(metrics)
     if not all(title in rows for title in AGY_ROW_TITLES):
         return metrics
-    order = normalize_order(primary, dynamic_titles(metrics))
+    hidden = hidden_titles(metrics)
+    order = tuple(t for t in normalize_order(primary, dynamic_titles(metrics)) if t not in hidden)
     first, second = order[0], order[1]
     a, b = rows[first], rows[second]
     others = [rows[t] for t in order[2:]]

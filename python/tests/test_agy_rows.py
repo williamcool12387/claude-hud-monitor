@@ -1,7 +1,7 @@
 import unittest
 
-from core.agy_rows import (AGY_ROW_TITLES, DEFAULT_ORDER, DEFAULT_PRIMARY, arrange_agy, move_row, normalize_order,
-                           normalize_primary, toggle_primary)
+from core.agy_rows import (AGY_ROW_TITLES, DEFAULT_ORDER, DEFAULT_PRIMARY, arrange_agy, hidden_titles, move_row,
+                           normalize_order, normalize_primary, toggle_primary)
 from core.providers.base import MetricRow, UsageMetrics
 
 
@@ -84,6 +84,48 @@ class GenericOrderTests(unittest.TestCase):
         self.assertIs(arrange_by_order(data, ['SESSION 5H', 'WEEKLY 7D']), data)
         self.assertIs(arrange_by_order(data, None), data)
         self.assertEqual(arrange_by_order(data, ['unknown']).metric1_title, 'SESSION 5H')
+
+
+class HiddenRowTests(unittest.TestCase):
+    """agy CLI 1.5.16 no longer reports Argon as its own quota group: its row shows only while it has a value."""
+
+    @staticmethod
+    def without_argon():
+        data = agy_metrics()
+        data.extra_metrics[-1] = MetricRow('ARGON 7D', subtext='需啟用 agy statusLine')
+        return data
+
+    def test_argon_row_without_a_value_is_hidden(self):
+        self.assertEqual(hidden_titles(self.without_argon()), ('ARGON 7D',))
+        self.assertEqual(hidden_titles(agy_metrics()), ())
+        result = arrange_agy(self.without_argon(), None)
+        shown = [result.metric1_title, result.metric2_title] + [r.title for r in result.extra_metrics]
+        self.assertNotIn('ARGON 7D', shown)
+        self.assertEqual(sorted(shown), sorted(t for t in AGY_ROW_TITLES if t != 'ARGON 7D'))
+        # the default pair falls through to the next rows of the default order
+        self.assertEqual((result.metric1_title, result.metric2_title), ('C/G 5H', 'GEMINI 5H'))
+
+    def test_the_row_comes_back_as_soon_as_data_for_it_appears(self):
+        result = arrange_agy(agy_metrics(), None)
+        self.assertEqual(result.metric2_title, 'ARGON 7D')
+
+    def test_a_saved_order_keeps_argon_and_hidden_rows_do_not_count_as_main(self):
+        saved = ['ARGON 7D', 'GEMINI 7D', 'C/G 5H', 'GEMINI 5H', 'C/G 7D']
+        result = arrange_agy(self.without_argon(), saved)
+        self.assertEqual((result.metric1_title, result.metric2_title), ('GEMINI 7D', 'C/G 5H'))
+        self.assertEqual(normalize_order(saved), tuple(saved))
+
+    def test_the_tray_number_menu_does_not_offer_the_hidden_row(self):
+        from core import tray_quota
+        titles = [r.title for r in tray_quota.readings({'agy': self.without_argon()}, ['agy'])]
+        self.assertNotIn('ARGON 7D', titles)
+        self.assertEqual(len(titles), 4)
+        shown = [r.title for r in tray_quota.readings({'agy': agy_metrics()}, ['agy'])]
+        self.assertIn('ARGON 7D', shown)
+
+    def test_error_data_hides_nothing(self):
+        self.assertEqual(hidden_titles(UsageMetrics(provider_id='agy', error='offline')), ())
+        self.assertEqual(hidden_titles(None), ())
 
 
 class DynamicRowTests(unittest.TestCase):

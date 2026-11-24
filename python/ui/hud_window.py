@@ -14,7 +14,7 @@ from core.providers.claude_provider import ClaudeAccountProvider, resolve_active
 from core import accounts as acct
 from core import agy_statusline
 from core import tray_quota
-from core.agy_rows import (arrange_agy, arrange_by_order, dynamic_titles, normalize_order,
+from core.agy_rows import (arrange_agy, arrange_by_order, dynamic_titles, hidden_titles, normalize_order,
                            DEFAULT_ORDER as AGY_DEFAULT_ORDER)
 from core.config_manager import ConfigManager, UI_MODES
 from core.refresh_controller import RefreshController
@@ -1097,10 +1097,16 @@ class HUDWindow(QWidget):
     def agy_dynamic_titles(self) -> tuple:
         return dynamic_titles(self._raw_metrics.get("agy"))
 
+    def agy_hidden_titles(self) -> tuple:
+        return hidden_titles(self._raw_metrics.get("agy"))
+
     def agy_order(self) -> tuple:
         return normalize_order(self.config.get("agy_order", self.config.get("agy_primary")), self.agy_dynamic_titles())
 
     def set_agy_order(self, titles):
+        titles = list(titles)
+        # rows hidden for lack of data are not on screen to be dragged: keep them (at the end) so the order stays complete
+        titles += [t for t in self.agy_hidden_titles() if t not in titles]
         order = normalize_order(titles, self.agy_dynamic_titles())
         if order == self.agy_order():
             return

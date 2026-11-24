@@ -147,7 +147,7 @@ class AgyTransportTests(unittest.TestCase):
         with patch.object(provider, "_get_access_token", return_value=None):
             result = provider.fetch_usage()
         self.assertEqual(result.error_code, "no_token")
-        self.assertEqual(result.badge2_text, "Argon 剩餘: --")
+        self.assertEqual(result.badge2_text, "")  # no Argon value: no Argon badge
         if result.error:
             self.assertEqual(result.extra_metrics, [])
         else:
@@ -162,7 +162,7 @@ class AgyTransportTests(unittest.TestCase):
         ):
             result = provider.fetch_usage()
         self.assertEqual(result.error_code, "auth")
-        self.assertEqual(result.badge2_text, "Argon 剩餘: --")
+        self.assertEqual(result.badge2_text, "")  # no Argon value: no Argon badge
         if result.error:
             self.assertEqual(result.extra_metrics, [])
         else:
@@ -192,7 +192,7 @@ class AgyTransportTests(unittest.TestCase):
         self.assertEqual(result.extra_metrics[0].reset.isoformat(), "2026-10-16T14:00:00+00:00")
         self.assertEqual(result.metric1_text, "3%")
         self.assertEqual(result.badge1_text, "C/G 剩餘: 84%")
-        self.assertEqual(result.badge2_text, "Argon 剩餘: --")
+        self.assertEqual(result.badge2_text, "")  # no Argon value: no Argon badge
         if result.error:
             self.assertEqual(result.extra_metrics, [])
         else:

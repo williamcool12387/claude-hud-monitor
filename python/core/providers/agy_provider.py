@@ -16,6 +16,12 @@ from core.providers.claude_provider import slugify
 
 # Cache keys with a fixed row (or a row's data) of their own; every other cache key becomes a row by itself.
 KNOWN_CACHE_KEYS = frozenset({"3p-5h", "3p-weekly", "gemini-5h", "gemini-weekly", "gemini-argon-wtu-weekly"})
+
+
+def _argon_badge(remaining) -> str:
+    """The Argon badge, or nothing while there is no Argon value (agy CLI 1.5.16 no longer reports it on its own)."""
+    return "" if remaining is None else f"Argon 剩餘: {percent_text(remaining)}"
+
 _WINDOW_TAGS = {"weekly": "7D", "week": "7D", "7d": "7D", "5h": "5H"}
 USER_AGENT = "antigravity/cli/1.5.14"
 
@@ -227,7 +233,7 @@ class AgyProvider(BaseProvider):
         has_rows = any(row.val is not None for row in rows)
         has_error = m1_val is None and m2_val is None and not has_rows
 
-        badge2 = summary_metrics.badge2_text if summary_metrics else f"Argon 剩餘: {percent_text(None)}"
+        badge2 = summary_metrics.badge2_text if summary_metrics else ""
 
         return UsageMetrics(
             provider_name="Antigravity",
@@ -260,8 +266,6 @@ class AgyProvider(BaseProvider):
         if cache is None:
             if res is None:
                 res = self._failure(now_str, "no_token", "未找到 Antigravity 登入憑證\n請先登入 Antigravity")
-            if not res.badge2_text:
-                res.badge2_text = f"Argon 剩餘: {percent_text(None)}"
             return res
         return self._merge_cache(res, cache, now_str)
 
@@ -292,7 +296,7 @@ class AgyProvider(BaseProvider):
         if res is None or result.badge1_text in ("", "C/G 剩餘: --"):
             cg = buckets.get("3p-weekly")
             result.badge1_text = f"C/G 剩餘: {percent_text(cg['remaining_fraction'] * 100 if cg else None)}"
-        result.badge2_text = f"Argon 剩餘: {percent_text(100 - rows[2].val if rows[2].val is not None else None)}"
+        result.badge2_text = _argon_badge(100 - rows[2].val if rows[2].val is not None else None)
         result.metric1_title = "GEMINI 5H"
         result.metric2_title = "GEMINI 7D"
         result.metric1_text = percent_text(result.metric1_val)
@@ -483,7 +487,7 @@ class AgyProvider(BaseProvider):
         m2_text = percent_text(m2_used_pct)
         badge1 = f"C/G 剩餘: {percent_text(third_party_rem_pct)}"
         argon_remaining = 100 - rows[2].val if rows[2].val is not None else None
-        badge2 = f"Argon 剩餘: {percent_text(argon_remaining)}"
+        badge2 = _argon_badge(argon_remaining)
         has_error = m1_used_pct is None and m2_used_pct is None and all(row.val is None for row in rows)
 
         return UsageMetrics(

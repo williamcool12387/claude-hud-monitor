@@ -71,11 +71,12 @@ def _build_sidebar_tiles(hud, menu):
 def _build_agy_rows(hud, menu):
     """Shows the current agy row order; the order itself is changed by dragging rows in the detail page."""
     order = hud.agy_order()
+    shown = [title for title in order if title not in hud.agy_hidden_titles()]
     sub = menu.addMenu("AGY 項目順序 (Row order)")
     hint = sub.addAction("在詳細頁面拖拉標題可調整，前兩條為主要顯示")
     hint.setEnabled(False)
     sub.addSeparator()
-    for index, title in enumerate(order, start=1):
+    for index, title in enumerate(shown, start=1):
         sub.addAction(f"{index}. {title}").setEnabled(False)
     sub.addSeparator()
     reset = sub.addAction("還原預設順序")
