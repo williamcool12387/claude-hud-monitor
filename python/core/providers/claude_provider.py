@@ -346,16 +346,30 @@ class ClaudeProvider(BaseProvider):
             return UsageMetrics(provider_name=display_title, provider_id=self.provider_id,
                                 last_updated_time=now_str, error="配額連線失敗，將自動重試", error_code="network")
 
+    @staticmethod
+    def _shape(value) -> str:
+        """Type and sub-field names of a response field; never its values."""
+        if isinstance(value, dict):
+            return f"object{sorted(str(k) for k in value)}"
+        if isinstance(value, list):
+            first = next((v for v in value if isinstance(v, dict)), None)
+            inner = f" of object{sorted(str(k) for k in first)}" if first is not None else ""
+            return f"list[{len(value)}]{inner}"
+        return "null" if value is None else type(value).__name__
+
     def _note_missing_breakdown(self, data, breakdown, rows):
-        """Log, when it changes, which fields a response without Code/Chat numbers did carry (names only, never
-        values), so it is visible whether the account's plan simply does not report them."""
+        """Log, when it changes, which fields a response without Code/Chat numbers did carry (names and shapes
+        only, never values), so it is visible whether the account's plan simply does not report them and where a
+        split might live instead."""
         keys = sorted(str(k) for k in data) if isinstance(data, dict) else []
         row_keys = sorted(str(r.get("key")) for r in rows if isinstance(r, dict))
-        state = (tuple(keys), bool(breakdown), tuple(row_keys))
+        candidates = {name: self._shape(data.get(name)) for name in ("seven_day_breakdown", "weekly_scoped_shares", "usage_scopes")
+                      if isinstance(data, dict) and name in data}
+        state = (tuple(keys), bool(breakdown), tuple(row_keys), tuple(sorted(candidates.items())))
         if getattr(self, "_breakdown_note", None) != state:
             self._breakdown_note = state
             logger.info(f"[ClaudeProvider] no Code/Chat breakdown in the usage response; fields: {keys}; "
-                        f"seven_day_breakdown present: {bool(breakdown)}; breakdown rows: {row_keys}")
+                        f"breakdown rows: {row_keys}; candidate fields: {candidates}")
 
     @safe_parse
     def _parse_response(self, data: dict, now_str: str) -> UsageMetrics:

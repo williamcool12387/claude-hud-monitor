@@ -149,6 +149,21 @@ class BreakdownBadgeTests(unittest.TestCase):
         self.assertEqual(len(notes), 1)
         self.assertIn("'five_hour'", notes[0])
         self.assertNotIn('12.0', notes[0])  # field names only, never values
+        self.assertIn("candidate fields: {}", notes[0])  # none of the candidate fields in this payload
+
+    def test_candidate_fields_are_logged_by_shape_never_by_value(self):
+        data = payload()
+        data['seven_day_breakdown'] = None
+        data['weekly_scoped_shares'] = [{'scope': 'SECRET-SCOPE', 'share': 0.4321}]
+        data['usage_scopes'] = {'owner': 'SECRET-OWNER', 'tier': 'x'}
+        with self.assertLogs('ClaudeHUD', level='INFO') as logged:
+            ClaudeProvider()._parse_response(data, 'test')
+        note = next(m for m in logged.output if 'no Code/Chat breakdown' in m)
+        self.assertIn("list[1] of object['scope', 'share']", note)
+        self.assertIn("object['owner', 'tier']", note)
+        self.assertIn("'seven_day_breakdown': 'null'", note)
+        for secret in ('SECRET-SCOPE', 'SECRET-OWNER', '0.4321'):
+            self.assertNotIn(secret, note)
 
     def test_breakdown_numbers_become_badges(self):
         data = payload()
