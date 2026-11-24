@@ -283,9 +283,17 @@ fn log_panic(info: &std::panic::PanicHookInfo<'_>) {
 /// beside the executable, matching Python `logger.py`).
 pub fn log_dir() -> PathBuf {
     #[cfg(not(test))]
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(exe_dir) = exe.parent()
-    {
+    let exe = std::env::current_exe().ok();
+    #[cfg(test)]
+    let exe: Option<PathBuf> = None;
+    resolve_log_dir(exe.as_deref().and_then(std::path::Path::parent))
+}
+
+fn resolve_log_dir(exe_dir: Option<&std::path::Path>) -> PathBuf {
+    if let Some(config_path) = crate::config::isolated_config_path() {
+        return config_path.with_file_name("logs");
+    }
+    if let Some(exe_dir) = exe_dir {
         let portable_cfg = exe_dir.join("config.json");
         if std::fs::metadata(&portable_cfg)
             .ok()
@@ -329,6 +337,24 @@ pub fn open_log_dir() {
 #[cfg(test)]
 mod tests {
     use super::{RotatingFileSink, format_unhandled, is_core_target};
+
+    #[test]
+    fn smoke_logs_ignore_portable_config_beside_executable() {
+        let root = std::env::temp_dir().join(format!("hud-portable-logs-{}", std::process::id()));
+        let portable = root.join("portable");
+        let scratch = root.join("smoke");
+        std::fs::create_dir_all(&portable).expect("create portable directory");
+        std::fs::write(portable.join("config.json"), "{}").expect("write portable config");
+        {
+            let _isolation = crate::config::SmokeIsolation::enter(&scratch);
+            assert_eq!(
+                super::resolve_log_dir(Some(&portable)),
+                scratch.join("ClaudeHUDMonitor").join("logs")
+            );
+        }
+        assert!(!portable.join("logs").exists());
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
 
     #[test]
     fn main_thread_header_matches_python_record() {
