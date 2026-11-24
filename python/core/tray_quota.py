@@ -62,8 +62,12 @@ def readings(raw_metrics: dict, provider_order, now: Optional[datetime] = None, 
             continue
         rows = [(m.main_key(1), m.metric1_title, m.metric1_val), (m.main_key(2), m.metric2_title, m.metric2_val)]
         rows += [(r.key, r.title, r.val) for r in m.extra_metrics]
+        hidden = ()
+        if provider_id == "agy":  # rows the sidebar leaves out for lack of data are not offered here either
+            from core.agy_rows import hidden_titles
+            hidden = hidden_titles(m)
         for key, title, used in rows:
-            if not key:  # a provider with a single window has no second row
+            if not key or title in hidden:  # a provider with a single window has no second row
                 continue
             result.append(Reading(qualified_key(provider_id, key), provider_id, title, used, _state(m, used, now),
                                   names.get(provider_id, "")))
@@ -119,7 +123,7 @@ def tooltip_line(reading: Reading, mode: str) -> str:
         return "Tray number: --"
     if reading.used is None:
         return f"{name}: --"
-    n = int(f"{reading.used:.0f}")
+    n = max(0, min(100, int(f"{reading.used:.0f}")))
     value = f"{100 - n}% left" if mode == REMAINING else f"{n}% used"
     return f"{name}: {value}" + (" (stale)" if reading.state in (STALE, OLD) else "")
 

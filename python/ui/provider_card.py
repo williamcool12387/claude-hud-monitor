@@ -51,8 +51,9 @@ class ProviderCardWidget(QWidget):
 
         header.addStretch()
 
-        self.badge = QLabel("--")
+        self.badge = QLabel("")
         self.badge.setObjectName("Badge")
+        self.badge.setVisible(False)  # shown only once there is something to say (a badge, STALE, OFFLINE)
         header.addWidget(self.badge)
 
         self.badge2 = QLabel("")
@@ -206,11 +207,13 @@ class ProviderCardWidget(QWidget):
             top = cell.mapTo(self, QPoint(0, 0)).y()
             return QRect(0, top, self.width(), max(1, cell.height()))
 
-        rows = [(self.m1_label.text(), rect(self.m1_cell), self.m1_cell),
-                (self.m2_label.text(), rect(self.m2_cell), self.m2_cell)]
+        rows = [(self.m1_label.text(), rect(self.m1_cell), self.m1_cell)]
+        if self.m2_label.text():
+            rows.append((self.m2_label.text(), rect(self.m2_cell), self.m2_cell))
         for widget, title, _value, _bar, _sub in self.extra_rows[:len(data.extra_metrics)]:
-            rows.append((title.text(), rect(widget), widget))
-        return rows
+            if title.text():
+                rows.append((title.text(), rect(widget), widget))
+        return rows if len(rows) > 1 else []
 
     def _cell_of(self, obj):
         cells = {id(self.m1_cell), id(self.m2_cell)} | {id(row[0]) for row in self.extra_rows}
@@ -366,14 +369,14 @@ class ProviderCardWidget(QWidget):
             self.badge.setVisible(True)
             self.badge2.setVisible(False)
         else:
-            self.badge.setText("--")
-            self.badge.setVisible(True)
+            self.badge.setVisible(False)  # nothing to show: no placeholder badge
             self.badge2.setVisible(False)
 
         self.update_countdown()
         if data.stale:
             self.dot.setStyleSheet(f"color: {'#f59e0b' if self.dark else '#92400e'}; font-size: 10px;")
             self.badge.setText("STALE")
+            self.badge.setVisible(True)  # the badge may be hidden for lack of numbers
 
     def update_countdown(self):
         data = self.current_metrics

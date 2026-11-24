@@ -3,15 +3,67 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import plistlib
 import tempfile
 import unittest
+from enum import Enum
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from PySide6.QtWidgets import QApplication
 from core import autostart
-from system.hotkey import GlobalHotkeyManager
+from system.hotkey import (
+    MOD_ALT,
+    MOD_CONTROL,
+    MOD_SHIFT,
+    MOD_WIN,
+    GlobalHotkeyManager,
+    compute_ct_mods,
+    format_hotkey_labels,
+    resolve_hotkey,
+)
 
 APP = QApplication.instance() or QApplication([])
 
 class PlatformTests(unittest.TestCase):
+    def test_mac_special_key_shortcuts_trigger_and_release(self):
+        class Key(Enum):
+            alt = alt_l = alt_r = 58
+            shift = shift_l = shift_r = 56
+            ctrl = ctrl_l = ctrl_r = 59
+            cmd = cmd_l = cmd_r = 55
+            f1 = 122
+            enter = 36
+            left = 123
+
+            @property
+            def value(self):
+                return SimpleNamespace(vk=self._value_)
+
+        keyboard = SimpleNamespace(Key=Key, Listener=MagicMock())
+        keyboard.Listener.IS_TRUSTED = True
+        with patch.dict('sys.modules', {'pynput': SimpleNamespace(keyboard=keyboard)}):
+            for chord, key in [('Ctrl+F1', Key.f1), ('Ctrl+Enter', Key.enter), ('Ctrl+Left', Key.left)]:
+                with self.subTest(chord=chord):
+                    manager = GlobalHotkeyManager()
+                    events = []
+                    manager.hotkey_triggered.connect(lambda: events.append('toggle'))
+                    manager.clickthrough_triggered.connect(lambda: events.append('clickthrough'))
+                    manager._start_macos(chord)
+                    callbacks = keyboard.Listener.call_args.kwargs
+                    try:
+                        callbacks['on_press'](Key.ctrl)
+                        callbacks['on_press'](key)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_press'](Key.shift)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_release'](Key.shift)
+                        callbacks['on_press'](key)
+                        self.assertEqual(events, ['toggle', 'toggle', 'clickthrough', 'toggle'])
+                    finally:
+                        manager.stop()
+
     def test_mac_source_autostart_has_script_and_escapes_xml(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(autostart.sys, 'platform', 'darwin'), patch.object(autostart.sys, 'frozen', False, create=True), patch.object(autostart.sys, 'executable', '/Python & Tools/python'), patch.object(autostart.sys, 'argv', ['/project & test/main.py']), patch.object(autostart.os.path, 'expanduser', return_value=directory):
             self.assertTrue(autostart.set_autostart(True))
@@ -48,6 +100,39 @@ class PlatformTests(unittest.TestCase):
             callbacks['on_release'](key)
             callbacks['on_press'](keyboard.Key.shift)
             callbacks['on_press'](key)
+            self.assertEqual(len(show), 1)
+            self.assertEqual(len(ghost), 1)
+            manager.stop()
+
+    def test_hotkey_string_parsing_and_clickthrough_modifiers(self):
+        mods, vk, label = resolve_hotkey("Control+H")
+        self.assertEqual((mods, vk, label), (MOD_CONTROL, ord("H"), "Ctrl+H"))
+        self.assertEqual(format_hotkey_labels("Control+H"), ("Ctrl+H", "Ctrl+Shift+H"))
+        self.assertEqual(format_hotkey_labels("Win+Shift+K"), ("Shift+Meta+K", "Ctrl+Shift+Meta+K"))
+        self.assertEqual(compute_ct_mods(MOD_CONTROL | MOD_ALT | MOD_SHIFT), MOD_CONTROL | MOD_ALT)
+        self.assertEqual(resolve_hotkey("invalid-chord"), (MOD_ALT, ord("C"), "Alt+C"))
+        self.assertEqual(resolve_hotkey("C"), (MOD_ALT, ord("C"), "Alt+C"))
+        self.assertEqual(resolve_hotkey(123), (MOD_ALT, ord("C"), "Alt+C"))
+        self.assertEqual(MOD_WIN & compute_ct_mods(MOD_WIN), MOD_WIN)
+
+    def test_mac_custom_hotkey_uses_macos_virtual_keycode(self):
+        keyboard = MagicMock()
+        keyboard.Listener.IS_TRUSTED = True
+        with patch.dict('sys.modules', {'pynput': MagicMock(keyboard=keyboard)}):
+            manager = GlobalHotkeyManager()
+            show, ghost = [], []
+            manager.hotkey_triggered.connect(lambda: show.append(True))
+            manager.clickthrough_triggered.connect(lambda: ghost.append(True))
+            manager._start_macos('Ctrl+H')
+            callbacks = keyboard.Listener.call_args.kwargs
+            for name in ['alt', 'alt_l', 'alt_r', 'shift', 'shift_l', 'shift_r', 'ctrl', 'ctrl_l', 'ctrl_r', 'cmd', 'cmd_l', 'cmd_r']:
+                getattr(keyboard.Key, name).vk = None
+            key_h = MagicMock(vk=4, char='\x08')
+            callbacks['on_press'](keyboard.Key.ctrl)
+            callbacks['on_press'](key_h)
+            callbacks['on_release'](key_h)
+            callbacks['on_press'](keyboard.Key.shift)
+            callbacks['on_press'](key_h)
             self.assertEqual(len(show), 1)
             self.assertEqual(len(ghost), 1)
             manager.stop()
