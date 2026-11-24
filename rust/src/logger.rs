@@ -20,7 +20,7 @@ impl RotatingFileSink {
     fn open(path: PathBuf, max_bytes: u64, backup_count: usize) -> Self {
         let initial_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         if initial_size > max_bytes {
-            Self::rotate_files(&path, backup_count);
+            let _ = Self::rotate_files(&path, backup_count);
         }
         let current_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         let file = OpenOptions::new()
@@ -43,19 +43,24 @@ impl RotatingFileSink {
         PathBuf::from(os)
     }
 
-    fn rotate_files(path: &Path, backup_count: usize) {
+    /// Rotate `path` into `path.1`, dropping the oldest backup. Returns false and touches no backup when the live
+    /// file cannot be moved (e.g. another process holds it open on Windows), so nothing is lost for nothing.
+    fn rotate_files(path: &Path, backup_count: usize) -> bool {
         if backup_count == 0 {
-            let _ = std::fs::remove_file(path);
-            return;
+            return std::fs::remove_file(path).is_ok();
         }
-        let oldest = Self::backup_path(path, backup_count);
-        let _ = std::fs::remove_file(&oldest);
+        let staging = Self::backup_path(path, 0);
+        if std::fs::rename(path, &staging).is_err() {
+            return false;
+        }
+        let _ = std::fs::remove_file(Self::backup_path(path, backup_count));
         for index in (1..backup_count).rev() {
             let src = Self::backup_path(path, index);
             let dst = Self::backup_path(path, index + 1);
             let _ = std::fs::rename(&src, &dst);
         }
-        let _ = std::fs::rename(path, Self::backup_path(path, 1));
+        let _ = std::fs::rename(&staging, Self::backup_path(path, 1));
+        true
     }
 
     fn write_line(&mut self, bytes: &[u8]) {
@@ -65,7 +70,7 @@ impl RotatingFileSink {
         if self.current_size + bytes.len() as u64 > self.max_bytes {
             // Drop existing open file before renaming (essential on Windows).
             self.file = None;
-            Self::rotate_files(&self.path, self.backup_count);
+            let _ = Self::rotate_files(&self.path, self.backup_count);
             self.file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -129,7 +134,9 @@ struct DualLogger {
 
 impl log::Log for DualLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
+        // DEBUG is kept for this crate only (file sink); dependencies stay INFO+.
         metadata.level() <= LevelFilter::Info
+            || metadata.target().starts_with("claude_hud_monitor")
     }
 
     fn log(&self, record: &Record) {
@@ -295,11 +302,14 @@ fn resolve_log_dir(exe_dir: Option<&std::path::Path>) -> PathBuf {
     }
     if let Some(exe_dir) = exe_dir {
         let portable_cfg = exe_dir.join("config.json");
+        let portable_logs = exe_dir.join("logs");
+        // A writable-looking config.json is not enough (e.g. under Program Files): the log folder must be creatable.
         if std::fs::metadata(&portable_cfg)
             .ok()
             .is_some_and(|m| !m.permissions().readonly())
+            && std::fs::create_dir_all(&portable_logs).is_ok()
         {
-            return exe_dir.join("logs");
+            return portable_logs;
         }
     }
     #[cfg(target_os = "windows")]

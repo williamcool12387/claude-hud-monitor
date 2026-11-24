@@ -779,6 +779,9 @@ fn parse_agy_json(raw: &Value, now: &str) -> UsageMetrics {
                     return format_error(now);
                 };
                 let (id, window) = (id.to_lowercase(), window.to_lowercase());
+                if id.contains("argon") {
+                    continue; // Argon has its own row; never fold it into GEMINI 7D
+                }
                 let Some(remaining) = remaining_fraction(bucket) else {
                     continue;
                 };
@@ -1140,6 +1143,22 @@ mod tests {
         assert_eq!(r.metric1_reset, Some(iso("2026-10-16T14:00:00+00:00")));
         near(r.metric2_val, 30.0);
         assert_eq!(r.metric2_reset, Some(iso("2026-10-23T12:00:00+00:00")));
+        near(r.extra_metrics[2].val, 85.0);
+    }
+
+    #[test]
+    fn argon_bucket_inside_gemini_group_never_pollutes_gemini_7d() {
+        let summary = r#"{"groups":[
+            {"name":"Gemini Models","buckets":[
+                {"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.70,"resetTime":"2026-10-23T12:00:00Z"},
+                {"bucketId":"gemini-5h","window":"5h","remainingFraction":0.95,"resetTime":"2026-10-16T14:00:00Z"},
+                {"bucketId":"gemini-argon-wtu-weekly","window":"weekly","remainingFraction":0.05,"resetTime":"2026-10-23T12:00:00Z"}]},
+            {"name":"Gemini 4 Argon","buckets":[
+                {"bucketId":"gemini-argon-wtu-weekly","window":"weekly","remainingFraction":0.15,"resetTime":"2026-10-23T12:00:00Z"}]}]}"#;
+        let (p, _) = provider(vec![ok(summary), ok(QUOTA_FIXTURE)], None, None);
+        let r = p.fetch_via_http("token", "12:00:00");
+        assert!(r.error.is_none());
+        near(r.metric2_val, 30.0); // gemini-weekly, not the 95% argon bucket
         near(r.extra_metrics[2].val, 85.0);
     }
 

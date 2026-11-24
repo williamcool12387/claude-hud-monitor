@@ -431,6 +431,8 @@ class AgyProvider(BaseProvider):
                 for b in g.get("buckets", []):
                     b_id = (b.get("id") or b.get("bucketId") or "").lower()
                     b_window = (b.get("window") or "").lower()
+                    if "argon" in b_id:
+                        continue  # Argon has its own row; never fold it into GEMINI 7D
                     rem_frac = percentage(b.get("remaining_fraction") if "remaining_fraction" in b else b.get("remainingFraction"), 1.0)
                     if rem_frac is None:
                         continue

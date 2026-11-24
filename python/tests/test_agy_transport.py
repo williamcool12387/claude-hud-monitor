@@ -322,6 +322,39 @@ class AgyTransportTests(unittest.TestCase):
         self.assertAlmostEqual(result.extra_metrics[2].val, 85.0)
         self.assertEqual(result.extra_metrics[2].reset.isoformat(), "2026-10-23T12:00:00+00:00")
 
+    def test_argon_bucket_inside_gemini_group_never_pollutes_gemini_7d(self):
+        summary = json.dumps(
+            {
+                "groups": [
+                    {
+                        "displayName": "Gemini Models",
+                        "buckets": [
+                            {"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.70, "resetTime": "2026-10-23T12:00:00Z"},
+                            {"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.95, "resetTime": "2026-10-16T14:00:00Z"},
+                            {"bucketId": "gemini-argon-wtu-weekly", "window": "weekly", "remainingFraction": 0.05, "resetTime": "2026-10-23T12:00:00Z"},
+                        ],
+                    },
+                    {
+                        "displayName": "Gemini 4 Argon",
+                        "buckets": [
+                            {"bucketId": "gemini-argon-wtu-weekly", "window": "weekly", "remainingFraction": 0.15, "resetTime": "2026-10-23T12:00:00Z"},
+                        ],
+                    },
+                ]
+            }
+        ).encode("utf-8")
+        self.cache_reader.return_value = self.cache
+        provider = AgyProvider()
+        with patch.object(provider, "_get_access_token", return_value="token"), patch(
+            "core.providers.agy_provider.urllib.request.urlopen",
+            side_effect=[_MockResponse(summary), _MockResponse(QUOTA_FIXTURE)],
+        ):
+            result = provider.fetch_usage()
+
+        self.assertIsNone(result.error)
+        self.assertAlmostEqual(result.metric2_val, 30.0)  # gemini-weekly, not the 95% argon bucket
+        self.assertAlmostEqual(result.extra_metrics[2].val, 85.0)
+
     def test_summary_with_only_gemini_weekly_is_not_an_error(self):
         summary = json.dumps(
             {

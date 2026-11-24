@@ -1030,7 +1030,7 @@ class HUDWindow(QWidget):
 
     def _main_profile_key(self):
         pref = str(self.config.get("claude_profile", "auto"))
-        return None if pref.strip().lower() == "auto" else acct.profile_key(resolve_active_profile(pref)[0].id)
+        return None if pref.strip().lower() in ("", "auto") else acct.profile_key(resolve_active_profile(pref)[0].id)
 
     def add_account(self, profile_id: str) -> bool:
         """Also show another Claude profile; False when refused (invalid, duplicate, the main tile's profile, cap)."""
