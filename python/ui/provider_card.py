@@ -51,8 +51,9 @@ class ProviderCardWidget(QWidget):
 
         header.addStretch()
 
-        self.badge = QLabel("--")
+        self.badge = QLabel("")
         self.badge.setObjectName("Badge")
+        self.badge.setVisible(False)  # shown only once there is something to say (a badge, STALE, OFFLINE)
         header.addWidget(self.badge)
 
         self.badge2 = QLabel("")
@@ -368,14 +369,14 @@ class ProviderCardWidget(QWidget):
             self.badge.setVisible(True)
             self.badge2.setVisible(False)
         else:
-            self.badge.setText("--")
-            self.badge.setVisible(True)
+            self.badge.setVisible(False)  # nothing to show: no placeholder badge
             self.badge2.setVisible(False)
 
         self.update_countdown()
         if data.stale:
             self.dot.setStyleSheet(f"color: {'#f59e0b' if self.dark else '#92400e'}; font-size: 10px;")
             self.badge.setText("STALE")
+            self.badge.setVisible(True)  # the badge may be hidden for lack of numbers
 
     def update_countdown(self):
         data = self.current_metrics

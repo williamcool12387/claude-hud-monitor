@@ -107,7 +107,8 @@ class ClaudeLimitsTests(unittest.TestCase):
             first, second = parse(data), parse(data)
         self.assertEqual([(r.title, r.key) for r in first.extra_metrics], [('DAILY_CAP', 'claude:daily_cap')])
         self.assertEqual(first.extra_metrics, second.extra_metrics)
-        self.assertEqual(info.call_count, 2)  # kind + group, once per process
+        unknown = [c for c in info.call_args_list if 'no Code/Chat breakdown' not in str(c)]
+        self.assertEqual(len(unknown), 2)  # kind + group, once per process
 
     def test_key_ignores_model_id_and_position_and_first_duplicate_wins(self):
         def entry(percent, name='Fable', model_id=None):
@@ -133,6 +134,47 @@ class ClaudeLimitsTests(unittest.TestCase):
         self.assertIn('--', card.extra_rows[1][4].text())  # no reset time
         card.update_metrics(UsageMetrics(provider_id='claude', metric1_val=20))
         self.assertTrue(all(row[0].isHidden() for row in card.extra_rows))
+
+
+class BreakdownBadgeTests(unittest.TestCase):
+    """The Code / Chat badges come from seven_day_breakdown; an account whose response lacks it shows no badge."""
+
+    def test_no_breakdown_means_no_badges_and_one_log_line_per_change(self):
+        provider = ClaudeProvider()
+        with self.assertLogs('ClaudeHUD', level='INFO') as logged:
+            first = provider._parse_response(payload(), 'test')
+            provider._parse_response(payload(), 'test')  # same fields again: not logged again
+        self.assertEqual((first.badge1_text, first.badge2_text), ('', ''))
+        notes = [m for m in logged.output if 'no Code/Chat breakdown' in m]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("'five_hour'", notes[0])
+        self.assertNotIn('12.0', notes[0])  # field names only, never values
+
+    def test_breakdown_numbers_become_badges(self):
+        data = payload()
+        data['seven_day_breakdown'] = {'rows': [{'key': 'claude_code', 'percent': 60}, {'key': 'chat', 'percent': 20}]}
+        result = parse(data)
+        self.assertEqual((result.badge1_text, result.badge2_text), ('Code: 60%', 'Chat: 20%'))
+
+    def test_a_single_available_number_keeps_just_that_badge(self):
+        data = payload()
+        data['seven_day_breakdown'] = {'rows': [{'key': 'chat', 'percent': 20}]}
+        result = parse(data)
+        self.assertEqual((result.badge1_text, result.badge2_text), ('', 'Chat: 20%'))
+
+    def test_card_hides_the_badges_when_there_is_nothing_to_show(self):
+        card = ProviderCardWidget('claude')
+        card.update_metrics(parse(payload()))
+        self.assertTrue(card.badge.isHidden())
+        self.assertTrue(card.badge2.isHidden())
+
+    def test_stale_still_shows_its_badge_when_there_are_no_numbers(self):
+        card = ProviderCardWidget('claude')
+        data = parse(payload())
+        data.stale = True
+        card.update_metrics(data)
+        self.assertFalse(card.badge.isHidden())
+        self.assertEqual(card.badge.text(), 'STALE')
 
 
 if __name__ == '__main__':

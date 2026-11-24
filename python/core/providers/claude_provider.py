@@ -346,6 +346,17 @@ class ClaudeProvider(BaseProvider):
             return UsageMetrics(provider_name=display_title, provider_id=self.provider_id,
                                 last_updated_time=now_str, error="配額連線失敗，將自動重試", error_code="network")
 
+    def _note_missing_breakdown(self, data, breakdown, rows):
+        """Log, when it changes, which fields a response without Code/Chat numbers did carry (names only, never
+        values), so it is visible whether the account's plan simply does not report them."""
+        keys = sorted(str(k) for k in data) if isinstance(data, dict) else []
+        row_keys = sorted(str(r.get("key")) for r in rows if isinstance(r, dict))
+        state = (tuple(keys), bool(breakdown), tuple(row_keys))
+        if getattr(self, "_breakdown_note", None) != state:
+            self._breakdown_note = state
+            logger.info(f"[ClaudeProvider] no Code/Chat breakdown in the usage response; fields: {keys}; "
+                        f"seven_day_breakdown present: {bool(breakdown)}; breakdown rows: {row_keys}")
+
     @safe_parse
     def _parse_response(self, data: dict, now_str: str) -> UsageMetrics:
         five_hour = data.get("five_hour") or {}
@@ -360,6 +371,8 @@ class ClaudeProvider(BaseProvider):
                 code_pct = percentage(r.get("percent"))
             elif r.get("key") == "chat":
                 chat_pct = percentage(r.get("percent"))
+        if code_pct is None and chat_pct is None:
+            self._note_missing_breakdown(data, breakdown, rows)
 
         five_h_dt = None
         if five_hour.get("resets_at"):
@@ -403,8 +416,9 @@ class ClaudeProvider(BaseProvider):
             metric2_val=w_val,
             metric2_text=percent_text(w_val),
             metric2_reset=seven_d_dt,
-            badge1_text=f"Code: {percent_text(code_pct)}",
-            badge2_text=f"Chat: {percent_text(chat_pct)}",
+            # a badge without a number is noise (e.g. accounts whose usage response has no breakdown): leave it out
+            badge1_text=f"Code: {percent_text(code_pct)}" if code_pct is not None else "",
+            badge2_text=f"Chat: {percent_text(chat_pct)}" if chat_pct is not None else "",
             last_updated_time=now_str,
             extra_metrics=scoped_rows,
             error="未取得有效配額資料" if s_val is None and w_val is None else None
