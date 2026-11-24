@@ -266,7 +266,10 @@ class GlobalHotkeyManager(QObject):
             mac_vk = _MAC_VK.get(key_label.upper())
 
             def matches_key(key, token):
-                if mac_vk is not None and token == mac_vk:
+                # pynput special keys are enums containing a KeyCode in .value;
+                # keep the enum in _mac_keys so modifier tracking still works.
+                special_vk = getattr(getattr(key, "value", None), "vk", None)
+                if mac_vk is not None and (token == mac_vk or special_vk == mac_vk):
                     return True
                 char = getattr(key, "char", None)
                 if isinstance(char, str) and char.upper() == key_label.upper():

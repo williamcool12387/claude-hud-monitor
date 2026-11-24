@@ -3,6 +3,8 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import plistlib
 import tempfile
 import unittest
+from enum import Enum
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from PySide6.QtWidgets import QApplication
@@ -21,6 +23,47 @@ from system.hotkey import (
 APP = QApplication.instance() or QApplication([])
 
 class PlatformTests(unittest.TestCase):
+    def test_mac_special_key_shortcuts_trigger_and_release(self):
+        class Key(Enum):
+            alt = alt_l = alt_r = 58
+            shift = shift_l = shift_r = 56
+            ctrl = ctrl_l = ctrl_r = 59
+            cmd = cmd_l = cmd_r = 55
+            f1 = 122
+            enter = 36
+            left = 123
+
+            @property
+            def value(self):
+                return SimpleNamespace(vk=self._value_)
+
+        keyboard = SimpleNamespace(Key=Key, Listener=MagicMock())
+        keyboard.Listener.IS_TRUSTED = True
+        with patch.dict('sys.modules', {'pynput': SimpleNamespace(keyboard=keyboard)}):
+            for chord, key in [('Ctrl+F1', Key.f1), ('Ctrl+Enter', Key.enter), ('Ctrl+Left', Key.left)]:
+                with self.subTest(chord=chord):
+                    manager = GlobalHotkeyManager()
+                    events = []
+                    manager.hotkey_triggered.connect(lambda: events.append('toggle'))
+                    manager.clickthrough_triggered.connect(lambda: events.append('clickthrough'))
+                    manager._start_macos(chord)
+                    callbacks = keyboard.Listener.call_args.kwargs
+                    try:
+                        callbacks['on_press'](Key.ctrl)
+                        callbacks['on_press'](key)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_press'](Key.shift)
+                        callbacks['on_press'](key)
+                        callbacks['on_release'](key)
+                        callbacks['on_release'](Key.shift)
+                        callbacks['on_press'](key)
+                        self.assertEqual(events, ['toggle', 'toggle', 'clickthrough', 'toggle'])
+                    finally:
+                        manager.stop()
+
     def test_mac_source_autostart_has_script_and_escapes_xml(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(autostart.sys, 'platform', 'darwin'), patch.object(autostart.sys, 'frozen', False, create=True), patch.object(autostart.sys, 'executable', '/Python & Tools/python'), patch.object(autostart.sys, 'argv', ['/project & test/main.py']), patch.object(autostart.os.path, 'expanduser', return_value=directory):
             self.assertTrue(autostart.set_autostart(True))

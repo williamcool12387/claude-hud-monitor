@@ -488,7 +488,7 @@ impl ConfigManager {
     /// Unit tests get a throw-away file: they switch layouts and save, and must not rewrite the
     /// settings of the HUD installed on the machine.
     pub fn config_path() -> PathBuf {
-        if let Some(path) = CONFIG_PATH_OVERRIDE.lock().clone() {
+        if let Some(path) = isolated_config_path() {
             return path;
         }
         #[cfg(test)]
@@ -695,6 +695,11 @@ pub fn migrate_style(cfg: &mut Config, saved: &serde_json::Value) -> bool {
 
 /// Config path forced by an isolated `--smoke-test` run; `None` means normal resolution.
 static CONFIG_PATH_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Config path selected by smoke isolation, shared with log directory resolution.
+pub(crate) fn isolated_config_path() -> Option<PathBuf> {
+    CONFIG_PATH_OVERRIDE.lock().clone()
+}
 
 /// Value that `--smoke-test` writes and reloads (`python/core/smoke_check.py:27-29`).
 pub const SMOKE_OPACITY: f32 = 0.55;
