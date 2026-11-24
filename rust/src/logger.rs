@@ -135,8 +135,7 @@ struct DualLogger {
 impl log::Log for DualLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         // DEBUG is kept for this crate only (file sink); dependencies stay INFO+.
-        metadata.level() <= LevelFilter::Info
-            || metadata.target().starts_with("claude_hud_monitor")
+        metadata.level() <= LevelFilter::Info || metadata.target().starts_with("claude_hud_monitor")
     }
 
     fn log(&self, record: &Record) {
